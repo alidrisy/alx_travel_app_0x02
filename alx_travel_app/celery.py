@@ -16,4 +16,16 @@ app.autodiscover_tasks()
 
 @app.task(bind=True, ignore_result=True)
 def debug_task(self):
-    print(f'Request: {self.request!r}') 
+    print(f'Request: {self.request!r}')
+
+
+# Optional: Configure Celery to use RabbitMQ
+app.conf.update(
+    broker_url='amqp://guest:guest@localhost:5672//',
+    result_backend='rpc://',
+    task_serializer='json',
+    accept_content=['json'],
+    result_serializer='json',
+    timezone='UTC',
+    enable_utc=True,
+) 

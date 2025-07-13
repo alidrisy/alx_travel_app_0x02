@@ -91,10 +91,14 @@ class BookingViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """Set the user to the current authenticated user and create payment."""
         booking = serializer.save(user=self.request.user)
-        
+
         # Create payment using PaymentService
         payment_service = PaymentService()
         payment = payment_service.create_payment_for_booking(booking, self.request.user)
+
+        # Trigger booking confirmation email task asynchronously
+        from .tasks import send_booking_confirmation_email
+        send_booking_confirmation_email.delay(booking.id)
 
     @action(detail=False, methods=["get"])
     def my_bookings(self, request):
@@ -122,12 +126,12 @@ class BookingViewSet(viewsets.ModelViewSet):
             else:
                 return Response(
                     {"detail": "No payment found for this booking"},
-                    status=status.HTTP_404_NOT_FOUND
+                    status=status.HTTP_404_NOT_FOUND,
                 )
         except Exception as e:
             return Response(
                 {"detail": "Error retrieving payment details"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
 
@@ -236,76 +240,91 @@ class PaymentViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """Create payment and initiate with Chapa."""
         payment = serializer.save()
-        
+
         # Update customer information
         payment.customer_email = self.request.user.email
-        payment.customer_name = f"{self.request.user.first_name} {self.request.user.last_name}".strip() or self.request.user.username
+        payment.customer_name = (
+            f"{self.request.user.first_name} {self.request.user.last_name}".strip()
+            or self.request.user.username
+        )
         payment.save()
-        
+
         # Initiate payment with Chapa
         payment_service = PaymentService()
         result = payment_service.initiate_payment(payment)
-        
-        if not result['success']:
-            raise serializers.ValidationError(result.get('message', 'Payment initiation failed'))
+
+        if not result["success"]:
+            raise serializers.ValidationError(
+                result.get("message", "Payment initiation failed")
+            )
 
     @action(detail=True, methods=["post"])
     def initiate_payment(self, request, pk=None):
         """Initiate payment with Chapa API."""
         payment = self.get_object()
-        
+
         # Validate request data
         serializer = PaymentInitiateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
+
         # Update payment with additional information
-        if serializer.validated_data.get('payment_method'):
-            payment.payment_method = serializer.validated_data['payment_method']
-        if serializer.validated_data.get('customer_phone'):
-            payment.customer_phone = serializer.validated_data['customer_phone']
+        if serializer.validated_data.get("payment_method"):
+            payment.payment_method = serializer.validated_data["payment_method"]
+        if serializer.validated_data.get("customer_phone"):
+            payment.customer_phone = serializer.validated_data["customer_phone"]
         payment.save()
-        
+
         # Initiate payment with Chapa
         payment_service = PaymentService()
         result = payment_service.initiate_payment(payment)
-        
-        if result['success']:
-            return Response({
-                'success': True,
-                'checkout_url': result['checkout_url'],
-                'payment_id': result['payment_id'],
-                'reference': result['reference'],
-                'message': 'Payment initiated successfully. Please complete payment using the checkout URL.'
-            })
+
+        if result["success"]:
+            return Response(
+                {
+                    "success": True,
+                    "checkout_url": result["checkout_url"],
+                    "payment_id": result["payment_id"],
+                    "reference": result["reference"],
+                    "message": "Payment initiated successfully. Please complete payment using the checkout URL.",
+                }
+            )
         else:
-            return Response({
-                'success': False,
-                'error': result.get('error'),
-                'message': result.get('message')
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {
+                    "success": False,
+                    "error": result.get("error"),
+                    "message": result.get("message"),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
     @action(detail=True, methods=["post"])
     def verify_payment(self, request, pk=None):
         """Verify payment status with Chapa API."""
         payment = self.get_object()
-        
+
         payment_service = PaymentService()
         result = payment_service.verify_payment_status(payment)
-        
-        if result['success']:
-            return Response({
-                'success': True,
-                'status': result['status'],
-                'amount': result.get('amount'),
-                'currency': result.get('currency'),
-                'message': f'Payment status: {result["status"]}'
-            })
+
+        if result["success"]:
+            return Response(
+                {
+                    "success": True,
+                    "status": result["status"],
+                    "amount": result.get("amount"),
+                    "currency": result.get("currency"),
+                    "message": f'Payment status: {result["status"]}',
+                }
+            )
         else:
-            return Response({
-                'success': False,
-                'error': result.get('error'),
-                'message': result.get('message')
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {
+                    "success": False,
+                    "error": result.get("error"),
+                    "message": result.get("message"),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
     @action(detail=False, methods=["get"])
     def my_payments(self, request):

@@ -138,8 +138,8 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Celery Configuration
-CELERY_BROKER_URL = env('CELERY_BROKER_URL', default='redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = env('CELERY_RESULT_BACKEND', default='redis://localhost:6379/0')
+CELERY_BROKER_URL = env('CELERY_BROKER_URL', default='amqp://guest:guest@localhost:5672//')
+CELERY_RESULT_BACKEND = env('CELERY_RESULT_BACKEND', default='rpc://')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -152,6 +152,7 @@ EMAIL_PORT = env.int('EMAIL_PORT', default=1025)
 EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=False)
 EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='noreply@alxtravel.com')
 
 # Chapa API Configuration
 CHAPA_SECRET_KEY = env('CHAPA_SECRET_KEY', default='')

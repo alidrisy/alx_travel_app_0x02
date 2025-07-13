@@ -1,28 +1,28 @@
-# ALX Travel App - Chapa Payment Integration
+# ALX Travel App - Background Task Management with Celery
 
-This project integrates the Chapa API for handling secure payments in the ALX Travel App, allowing users to make bookings with various payment options.
+This project implements background task management using Celery with RabbitMQ as the message broker, along with email notifications for bookings.
 
 ## Features
 
-- **Chapa Payment Integration**: Secure payment processing using Chapa API
-- **Payment Status Tracking**: Real-time payment status verification
-- **Email Notifications**: Automated email confirmations for successful/failed payments
-- **Background Tasks**: Celery integration for async payment processing
-- **RESTful API**: Complete API endpoints for payment management
+- **Background Task Management**: Celery configured with RabbitMQ for asynchronous task processing
+- **Email Notifications**: Automatic booking confirmation emails sent asynchronously
+- **Payment Integration**: Chapa payment gateway integration with email confirmations
+- **RESTful API**: Django REST Framework with comprehensive endpoints
+- **User Authentication**: Secure user management and booking system
 
 ## Prerequisites
 
 - Python 3.8+
-- MySQL/MariaDB
-- Redis (for Celery)
-- Chapa API account
+- MySQL Database
+- RabbitMQ Server
+- Virtual Environment
 
 ## Installation
 
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd alx_travel_app_0x02
+   cd alx_travel_app_0x03
    ```
 
 2. **Create and activate virtual environment**
@@ -37,301 +37,285 @@ This project integrates the Chapa API for handling secure payments in the ALX Tr
    ```
 
 4. **Set up environment variables**
-   Create a `.env` file in the project root:
+   Create a `.env` file in the project root with the following variables:
    ```env
    # Database Configuration
-   DB_NAME=alx_travel_app
-   DB_USER=your_mysql_username
-   DB_PASSWORD=your_mysql_password
+   DB_NAME=your_database_name
+   DB_USER=your_database_user
+   DB_PASSWORD=your_database_password
    DB_HOST=localhost
    DB_PORT=3306
 
-   # Chapa API Configuration
-   CHAPA_SECRET_KEY=your_chapa_secret_key_here
-   CHAPA_BASE_URL=https://api.chapa.co/v1
-
    # Celery Configuration
-   CELERY_BROKER_URL=redis://localhost:6379/0
-   CELERY_RESULT_BACKEND=redis://localhost:6379/0
+   CELERY_BROKER_URL=amqp://guest:guest@localhost:5672//
+   CELERY_RESULT_BACKEND=rpc://
 
    # Email Configuration
    EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
    EMAIL_HOST=localhost
    EMAIL_PORT=1025
    EMAIL_USE_TLS=False
+   EMAIL_HOST_USER=
+   EMAIL_HOST_PASSWORD=
    DEFAULT_FROM_EMAIL=noreply@alxtravel.com
+
+   # Chapa API Configuration
+   CHAPA_SECRET_KEY=your_chapa_secret_key
+   CHAPA_BASE_URL=https://api.chapa.co/v1
    ```
 
-5. **Set up database**
+5. **Set up RabbitMQ**
+   ```bash
+   # Install RabbitMQ (Ubuntu/Debian)
+   sudo apt-get install rabbitmq-server
+   
+   # Start RabbitMQ service
+   sudo systemctl start rabbitmq-server
+   sudo systemctl enable rabbitmq-server
+   
+   # Create a user (optional, default guest:guest works for development)
+   sudo rabbitmqctl add_user myuser mypassword
+   sudo rabbitmqctl set_user_tags myuser administrator
+   sudo rabbitmqctl set_permissions -p / myuser ".*" ".*" ".*"
+   ```
+
+6. **Run database migrations**
    ```bash
    python manage.py makemigrations
    python manage.py migrate
    ```
 
-6. **Create superuser**
+7. **Create superuser**
    ```bash
    python manage.py createsuperuser
    ```
 
-## Chapa API Setup
+## Running the Application
 
-1. **Create Chapa Account**
-   - Visit [Chapa Developer Portal](https://developer.chapa.co/)
-   - Sign up for an account
-   - Navigate to the dashboard
-
-2. **Get API Keys**
-   - Go to API Keys section
-   - Copy your Secret Key
-   - Update the `CHAPA_SECRET_KEY` in your `.env` file
-
-3. **Test with Sandbox**
-   - Use Chapa's sandbox environment for testing
-   - Test payment flows before going live
-
-## API Endpoints
-
-### Payment Endpoints
-
-#### 1. Create Payment
-```http
-POST /api/payments/
-Content-Type: application/json
-Authorization: Bearer <token>
-
-{
-    "booking": 1,
-    "amount": "5000.00",
-    "currency": "ETB",
-    "payment_method": "card"
-}
-```
-
-#### 2. Initiate Payment with Chapa
-```http
-POST /api/payments/{payment_id}/initiate_payment/
-Content-Type: application/json
-Authorization: Bearer <token>
-
-{
-    "payment_method": "card",
-    "customer_phone": "+251912345678"
-}
-```
-
-**Response:**
-```json
-{
-    "success": true,
-    "checkout_url": "https://checkout.chapa.co/...",
-    "payment_id": 1,
-    "reference": "payment-ref-123",
-    "message": "Payment initiated successfully. Please complete payment using the checkout URL."
-}
-```
-
-#### 3. Verify Payment Status
-```http
-POST /api/payments/{payment_id}/verify_payment/
-Authorization: Bearer <token>
-```
-
-**Response:**
-```json
-{
-    "success": true,
-    "status": "completed",
-    "amount": "5000.00",
-    "currency": "ETB",
-    "message": "Payment status: completed"
-}
-```
-
-#### 4. Get Payment Status
-```http
-GET /api/payments/{payment_id}/payment_status/
-Authorization: Bearer <token>
-```
-
-#### 5. List User Payments
-```http
-GET /api/payments/my_payments/
-Authorization: Bearer <token>
-```
-
-### Booking Endpoints
-
-#### 1. Create Booking (Automatically creates payment)
-```http
-POST /api/bookings/
-Content-Type: application/json
-Authorization: Bearer <token>
-
-{
-    "listing": 1,
-    "start_date": "2024-01-15",
-    "end_date": "2024-01-18"
-}
-```
-
-#### 2. Get Booking Payment Details
-```http
-GET /api/bookings/{booking_id}/payment_details/
-Authorization: Bearer <token>
-```
-
-## Payment Workflow
-
-1. **User creates a booking**
-   - System automatically creates a payment record
-   - Payment status is set to "pending"
-
-2. **User initiates payment**
-   - Call the initiate_payment endpoint
-   - System creates Chapa transaction
-   - Returns checkout URL to user
-
-3. **User completes payment**
-   - User is redirected to Chapa checkout
-   - Completes payment using preferred method
-
-4. **Payment verification**
-   - System verifies payment with Chapa API
-   - Updates payment status accordingly
-   - Sends confirmation email if successful
-
-5. **Background processing**
-   - Celery tasks handle email notifications
-   - Payment status updates are processed asynchronously
-
-## Payment Statuses
-
-- **pending**: Payment created but not initiated
-- **processing**: Payment initiated with Chapa
-- **completed**: Payment successfully processed
-- **failed**: Payment failed or expired
-- **cancelled**: Payment was cancelled
-
-## Email Templates
-
-The system includes email templates for:
-- Payment confirmation
-- Payment failure notification
-- Booking confirmation
-
-Templates are located in `listings/templates/listings/email/`
-
-## Background Tasks
-
-### Celery Tasks
-
-1. **send_payment_confirmation_email**: Sends confirmation email for successful payments
-2. **send_payment_failed_email**: Sends notification for failed payments
-3. **update_payment_status**: Verifies payment status with Chapa API
-4. **cleanup_expired_payments**: Cleans up payments pending for more than 24 hours
-
-### Running Celery
-
+### 1. Start Django Development Server
 ```bash
-# Start Celery worker
-celery -A alx_travel_app worker -l info
+python manage.py runserver
+```
 
-# Start Celery beat (for scheduled tasks)
+### 2. Start Celery Worker
+In a new terminal:
+```bash
+celery -A alx_travel_app worker -l info
+```
+
+### 3. Start Celery Beat (for scheduled tasks)
+In another terminal:
+```bash
 celery -A alx_travel_app beat -l info
 ```
 
-## Testing
+### 4. Start RabbitMQ (if not running)
+```bash
+sudo systemctl start rabbitmq-server
+```
 
-### Test Payment Flow
+## Background Task Management
 
-1. **Create a test booking**
-   ```bash
-   curl -X POST http://localhost:8000/api/bookings/ \
-     -H "Authorization: Bearer <token>" \
-     -H "Content-Type: application/json" \
-     -d '{"listing": 1, "start_date": "2024-01-15", "end_date": "2024-01-18"}'
-   ```
+### Celery Configuration
 
-2. **Initiate payment**
-   ```bash
-   curl -X POST http://localhost:8000/api/payments/1/initiate_payment/ \
-     -H "Authorization: Bearer <token>" \
-     -H "Content-Type: application/json" \
-     -d '{"payment_method": "card"}'
-   ```
+The project is configured with Celery using RabbitMQ as the message broker:
 
-3. **Verify payment status**
-   ```bash
-   curl -X POST http://localhost:8000/api/payments/1/verify_payment/ \
-     -H "Authorization: Bearer <token>"
-   ```
+- **Broker**: RabbitMQ (`amqp://guest:guest@localhost:5672//`)
+- **Result Backend**: RPC (`rpc://`)
+- **Task Serializer**: JSON
+- **Result Serializer**: JSON
 
-### Using Chapa Sandbox
+### Available Tasks
 
-For testing, use Chapa's sandbox environment:
-- Test card numbers are provided in Chapa documentation
-- No real money is charged
-- Perfect for development and testing
+The following background tasks are implemented in `listings/tasks.py`:
 
-## Error Handling
+1. **`send_booking_confirmation_email(booking_id)`**
+   - Sends booking confirmation email to user
+   - Triggered automatically when a booking is created
 
-The system includes comprehensive error handling for:
-- API connection failures
-- Invalid payment data
-- Network timeouts
-- Chapa API errors
+2. **`send_payment_confirmation_email(payment_id)`**
+   - Sends payment confirmation email to user
+   - Triggered when payment status is updated to 'completed'
 
-All errors are logged and appropriate responses are returned to the client.
+3. **`send_payment_failed_email(payment_id)`**
+   - Sends payment failed notification email to user
+   - Triggered when payment status is updated to 'failed'
 
-## Security Considerations
+4. **`update_payment_status(payment_id)`**
+   - Updates payment status by verifying with Chapa API
+   - Can be scheduled or triggered manually
 
-1. **API Key Security**: Never commit API keys to version control
-2. **HTTPS**: Always use HTTPS in production
-3. **Input Validation**: All inputs are validated before processing
-4. **Rate Limiting**: Consider implementing rate limiting for payment endpoints
-5. **Logging**: Sensitive data is not logged
+5. **`cleanup_expired_payments()`**
+   - Cleans up payments that have been pending for too long
+   - Scheduled task to run periodically
 
-## Production Deployment
+### Email Templates
 
-1. **Update environment variables**
-   - Use production Chapa API keys
-   - Configure production database
-   - Set up proper email backend
+Email templates are located in `listings/templates/listings/email/`:
+- `booking_confirmation.html` - Booking confirmation email
+- `payment_confirmation.html` - Payment confirmation email
+- `payment_failed.html` - Payment failed notification email
 
-2. **Security settings**
-   - Set `DEBUG=False`
-   - Configure `ALLOWED_HOSTS`
-   - Use HTTPS
+## Testing Background Tasks
 
-3. **Monitoring**
-   - Monitor payment success rates
-   - Set up error alerting
-   - Monitor Celery task performance
+### 1. Test Email Task Manually
+
+Create a booking through the API and check the console output for email messages (since we're using console backend for development).
+
+### 2. Test Celery Worker
+
+```bash
+# Start the worker
+celery -A alx_travel_app worker -l info
+
+# In another terminal, test the debug task
+python manage.py shell
+```
+
+```python
+from alx_travel_app.celery import debug_task
+result = debug_task.delay()
+print(result.id)
+```
+
+### 3. Test Booking Email Task
+
+```python
+from listings.tasks import send_booking_confirmation_email
+# Assuming you have a booking with ID 1
+send_booking_confirmation_email.delay(1)
+```
+
+### 4. Monitor Task Execution
+
+You can monitor task execution in the Celery worker terminal. Tasks will show:
+- Task received
+- Task started
+- Task succeeded/failed
+- Any errors or exceptions
+
+## API Endpoints
+
+### Listings
+- `GET /api/listings/` - List all listings
+- `GET /api/listings/{id}/` - Get listing details
+- `POST /api/listings/` - Create new listing (authenticated)
+- `PUT /api/listings/{id}/` - Update listing (authenticated)
+- `DELETE /api/listings/{id}/` - Delete listing (authenticated)
+
+### Bookings
+- `GET /api/bookings/` - List user's bookings (authenticated)
+- `POST /api/bookings/` - Create new booking (authenticated)
+- `GET /api/bookings/{id}/` - Get booking details (authenticated)
+- `PUT /api/bookings/{id}/` - Update booking (authenticated)
+- `DELETE /api/bookings/{id}/` - Cancel booking (authenticated)
+
+### Payments
+- `GET /api/payments/` - List user's payments (authenticated)
+- `POST /api/payments/` - Create new payment (authenticated)
+- `POST /api/payments/{id}/initiate_payment/` - Initiate payment with Chapa
+- `POST /api/payments/{id}/verify_payment/` - Verify payment status
+
+### Reviews
+- `GET /api/reviews/` - List all reviews
+- `POST /api/reviews/` - Create new review (authenticated)
+- `GET /api/reviews/{id}/` - Get review details
+- `PUT /api/reviews/{id}/` - Update review (authenticated)
+- `DELETE /api/reviews/{id}/` - Delete review (authenticated)
+
+## Email Configuration
+
+For production, update the email settings in `.env`:
+
+```env
+EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USE_TLS=True
+EMAIL_HOST_USER=your-email@gmail.com
+EMAIL_HOST_PASSWORD=your-app-password
+DEFAULT_FROM_EMAIL=your-email@gmail.com
+```
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Database Connection Error**
-   - Check database credentials in `.env`
-   - Ensure MySQL service is running
+1. **RabbitMQ Connection Error**
+   - Ensure RabbitMQ is running: `sudo systemctl status rabbitmq-server`
+   - Check if port 5672 is accessible
+   - Verify credentials in CELERY_BROKER_URL
 
-2. **Chapa API Errors**
-   - Verify API key is correct
-   - Check API endpoint URLs
-   - Ensure account is activated
+2. **Celery Worker Not Starting**
+   - Check if Django settings are properly configured
+   - Ensure all dependencies are installed
+   - Verify the Celery app is imported in `__init__.py`
 
-3. **Celery Issues**
-   - Check Redis connection
-   - Verify Celery worker is running
-   - Check task logs
+3. **Tasks Not Executing**
+   - Check if the worker is running and connected to the broker
+   - Verify task registration with `celery -A alx_travel_app inspect active`
+   - Check task logs for errors
 
-### Logs
+4. **Email Not Sending**
+   - Verify email configuration in settings
+   - Check if email backend is properly configured
+   - For console backend, check terminal output
 
-Check logs in:
-- Django logs: `django.log`
-- Celery logs: Console output
-- Application logs: Check logging configuration
+### Useful Commands
+
+```bash
+# Check Celery worker status
+celery -A alx_travel_app inspect active
+
+# Check registered tasks
+celery -A alx_travel_app inspect registered
+
+# Monitor Celery events
+celery -A alx_travel_app events
+
+# Check RabbitMQ status
+sudo rabbitmqctl status
+
+# List RabbitMQ queues
+sudo rabbitmqctl list_queues
+```
+
+## Development
+
+### Adding New Tasks
+
+1. Create the task function in `listings/tasks.py`:
+```python
+@shared_task
+def my_new_task(param1, param2):
+    # Task logic here
+    pass
+```
+
+2. Import and call the task:
+```python
+from .tasks import my_new_task
+my_new_task.delay(param1, param2)
+```
+
+### Scheduled Tasks
+
+To add scheduled tasks, update `celery.py`:
+
+```python
+from celery.schedules import crontab
+
+app.conf.beat_schedule = {
+    'cleanup-expired-payments': {
+        'task': 'listings.tasks.cleanup_expired_payments',
+        'schedule': crontab(hour=0, minute=0),  # Daily at midnight
+    },
+}
+```
+
+## License
+
+This project is part of the ALX Software Engineering program.
 
 ## Contributing
 
@@ -340,11 +324,3 @@ Check logs in:
 3. Make your changes
 4. Add tests
 5. Submit a pull request
-
-## License
-
-This project is licensed under the MIT License.
-
-## Support
-
-For support, please contact the development team or create an issue in the repository.
